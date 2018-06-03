@@ -5,6 +5,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.Random;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -14,10 +15,18 @@ import java.util.logging.Logger;
  */
 public class GameServer {
     private static final int NUM_PLAYER_MAX = 2;
+    private static final int NUM_OF_VALUES = 4;
+    private static final int MAX_VALUE = 100;
     private int port;
     private ServerSocket serverSocket;
     private int numPlayers;
     private ServerSideConnection player1, player2;
+    private Random random = new Random();
+    private int maxTurns;
+    private int turnsMade;
+    private int[] values = new int[NUM_OF_VALUES];
+    private int player1ClickedButtonNumber;
+    private int player2ClickedButtonNumber;
     
     public GameServer(int port) {
         System.out.println("----Game server----");
@@ -29,6 +38,17 @@ public class GameServer {
             Logger.getLogger(GameServer.class.getName()).log(Level.SEVERE,
                     null, ex);
             System.out.println("IOException from game server constructor");
+        }
+        this.maxTurns = 4;
+        this.turnsMade = 0;
+        generateRandomValues();
+    }
+    
+    private void generateRandomValues(){
+        System.out.println("----Generating random values----");
+        for(int i = 0; i < this.values.length; ++i){
+            this.values[i] = random.nextInt(MAX_VALUE);
+            System.out.println("Value #" + (i + 1) + " is " + this.values[i]);
         }
     }
     
@@ -66,13 +86,13 @@ public class GameServer {
     
     private class ServerSideConnection implements Runnable{
         private Socket socket;
-        private int PlayerID;
+        private int playerID;
         private DataInputStream dis;
         private DataOutputStream dos;
         
         public ServerSideConnection(Socket socket, int playerID){
             this.socket = socket;
-            this.PlayerID = playerID;
+            this.playerID = playerID;
             try{
                 this.dis = new DataInputStream(this.socket.getInputStream());
                 this.dos = new DataOutputStream(this.socket.getOutputStream());
@@ -88,7 +108,12 @@ public class GameServer {
         @Override
         public void run() {
             try {
-                this.dos.writeInt(this.PlayerID);
+                this.dos.writeInt(this.playerID);
+                this.dos.writeInt(maxTurns);
+                this.dos.writeInt(turnsMade);
+                for(int val: values){
+                    this.dos.writeInt(val);
+                }
                 this.dos.flush();
             } catch (IOException ex) {
                 Logger.getLogger(GameServer.class.getName())
@@ -97,7 +122,33 @@ public class GameServer {
             }
             
             while(true){
-                    
+                try{
+                    if(playerID == 1){
+                        player1ClickedButtonNumber = this.dis.readInt();
+                        System.out.println("Player #1 clicked button #"
+                            + player1ClickedButtonNumber);
+                        player2.sendButtonNumber(player1ClickedButtonNumber);
+                    } else {
+                        player2ClickedButtonNumber = this.dis.readInt();
+                        System.out.println("Player #2 clicked button #"
+                            + player2ClickedButtonNumber);
+                        player1.sendButtonNumber(player2ClickedButtonNumber);
+                    }
+                } catch(IOException ex){
+                    Logger.getLogger(GameServer.class.getName())
+                        .log(Level.SEVERE, "IOEsception from run() in"
+                                + " ServerSideConnection", ex);
+                }
+            }
+        }
+        
+        public void sendButtonNumber(int buttonNumber){
+            try {
+                this.dos.writeInt(buttonNumber);
+                this.dos.flush();
+            } catch (IOException ex) {
+                Logger.getLogger(GameServer.class.getName()).log(Level.SEVERE,
+                        null, ex);
             }
         }
         
