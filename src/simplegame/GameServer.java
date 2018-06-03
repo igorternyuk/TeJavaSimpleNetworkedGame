@@ -102,7 +102,6 @@ public class GameServer {
                              "IOException from ServerSideConnection constructor",
                              ex);
             }
-            
         }
         
         @Override
@@ -134,11 +133,23 @@ public class GameServer {
                             + player2ClickedButtonNumber);
                         player1.sendButtonNumber(player2ClickedButtonNumber);
                     }
+                    ++turnsMade;
+                    if(turnsMade == maxTurns){
+                        System.out.println("---GAME OVER---");
+                        break;
+                    }
                 } catch(IOException ex){
                     Logger.getLogger(GameServer.class.getName())
                         .log(Level.SEVERE, "IOEsception from run() in"
                                 + " ServerSideConnection", ex);
                 }
+            }
+            
+            try {
+                serverSocket.close();
+            } catch (IOException ex) {
+                Logger.getLogger(GameServer.class.getName()).log(Level.SEVERE,
+                        null, ex);
             }
         }
         
