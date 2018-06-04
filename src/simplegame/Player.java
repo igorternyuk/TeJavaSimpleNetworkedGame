@@ -21,10 +21,10 @@ import javax.swing.JTextArea;
  * @author igor
  */
 public class Player{
-    private static final String WINDOW_TITLE = "Simple networked game";
+    private static final int BUTTON_COUNT = 4;
     private int width, height;
     private JFrame frame;
-    private JButton[] buttons = new JButton[4];
+    private JButton[] buttons = new JButton[BUTTON_COUNT];
     private JTextArea messagesArea;
     private Container container;
     private ClientSideConnection clientSideConnection;
@@ -32,9 +32,10 @@ public class Player{
     private int id, opponentId;
     private int maxTurns;
     private int turnsMade;
-    private int values[] = new int[4];
+    private int values[] = new int[BUTTON_COUNT];
     private boolean buttonsEnabled = false;
-    private boolean[] alreadyClickedButtons = new boolean[4];
+    private boolean[] alreadyClickedButtons = new boolean[BUTTON_COUNT];
+    private boolean isOpponentReady = false;
     
     public Player(int width, int height){
         this.width = width;
@@ -69,7 +70,7 @@ public class Player{
         
         if(id == 1){
             opponentId = 2;
-            buttonsEnabled = true;
+            buttonsEnabled = false;
             this.messagesArea.setText("You are player #1. You go first.");
         } else {
             opponentId = 1;
@@ -84,6 +85,16 @@ public class Player{
     
     public void connectToServer(String host, int port){
         clientSideConnection = new ClientSideConnection(host, port);
+        if(id == 1){
+            Thread thread = new Thread(() -> {
+                System.out.println("Waiting for opponent...");
+                if(clientSideConnection.receiveOpponentReadiness()){
+                    buttonsEnabled = true;
+                    toggleButtons();
+                }
+            });
+            thread.start();
+        }
     }
     
     public final void setupButtons(){
@@ -92,6 +103,7 @@ public class Player{
             this.buttons[i].setFont(new Font("Tahoma", Font.BOLD | Font.ITALIC,
                                              32));
             this.buttons[i].addActionListener((ActionEvent e) -> {
+                System.out.println("Button click handling");
                 JButton clickedButton = (JButton)e.getSource();
                 int btnNumber = Integer.valueOf(clickedButton.getText());
                 alreadyClickedButtons[btnNumber - 1] = true;
@@ -99,18 +111,22 @@ public class Player{
                         + btnNumber);
                 clientSideConnection.sendButtonNumber(btnNumber);
                 myPoints += Player.this.values[btnNumber - 1];
+                ++turnsMade;
                 System.out.println("Your points are " + myPoints);
                 Player.this.messagesArea.setText("You clicked button #"
                         + btnNumber + "Your points are " + myPoints
                         + " Wait for player #" + opponentId);
+                System.out.println("Your id is " + id);
+                System.out.println("Turns made " + turnsMade);
                 if(id == 2 && turnsMade == maxTurns){
-                    checkWinner();
+                    determineWinner();
                 } else {
                     startWaitingForOpponentClickedButtonNumber();
                 }
+                
                 buttonsEnabled = false;
                 toggleButtons();
-            });    
+            });
         }
     }
     
@@ -125,9 +141,7 @@ public class Player{
     
     public void startWaitingForOpponentClickedButtonNumber(){
         Thread thread = new Thread(() -> {
-            while(true){
-                updateTurn();
-            }
+            updateTurn(); 
         });
         thread.start();
     }
@@ -137,27 +151,33 @@ public class Player{
         messagesArea.setText("Your opponent clicked button #" + btnNum
                 + ". Your turn.");
         opponentPoints += this.values[btnNum - 1];
+        System.out.println("---Updating turn---");
+        System.out.println("You are player #" + id);
+        System.out.println("Turns made - " + turnsMade);
         if(id == 1 && turnsMade == maxTurns){
-            checkWinner();
+            System.out.println("Determining the winner for the first player");
+            determineWinner();
+        } else {
+            buttonsEnabled = true;
         }
-        System.out.println("You enemy has " + opponentPoints + ".");
-        buttonsEnabled = true;
         toggleButtons();
+        System.out.println("You enemy has " + opponentPoints + ".");
     }
     
-    public void checkWinner(){
+    public void determineWinner(){
         if(myPoints > opponentPoints){
                 messagesArea.setBackground(Color.green);
                 messagesArea.setText("You won!!!\nYOU: " + myPoints
                         + "\nOPPONENT: " + opponentPoints);
-            } else if(myPoints < opponentPoints){
-                messagesArea.setBackground(Color.red);
-                messagesArea.setText("You lost!!!\nYOU: " + myPoints
-                        + "\nOPPONENT: " + opponentPoints);
-            } else {
-                messagesArea.setBackground(Color.cyan);
-                messagesArea.setText("It's tie!!!\nYou both have: " + myPoints);
+        } else if(myPoints < opponentPoints){
+            messagesArea.setBackground(Color.red);
+            messagesArea.setText("You lost!!!\nYOU: " + myPoints
+                    + "\nOPPONENT: " + opponentPoints);
+        } else {
+            messagesArea.setBackground(Color.cyan);
+            messagesArea.setText("It's tie!!!\nYou both have: " + myPoints);
         }
+        clientSideConnection.closeConnection();
     }
     
     private class ClientSideConnection {
@@ -174,15 +194,14 @@ public class Player{
                 id = dis.readInt();
                 System.out.println(String.format("Connected to the server as"
                         + " Player #%d", id));
-                maxTurns = this.dis.readInt() >> 1;
+                maxTurns = this.dis.readInt() / 2;
                 System.out.println("maxTurns = " + maxTurns);
                 turnsMade = this.dis.readInt();
                 System.out.println("turnsMade = " + turnsMade);
-                for(int i = 0; i < 4; ++i){
+                for(int i = 0; i < values.length; ++i){
                     values[i] = this.dis.readInt();
                     System.out.println("value #" + (i + 1) + " is " + values[i]);
                 }
-                
             } catch (IOException ex) {
                 Logger.getLogger(ClientSideConnection.class.getName())
                         .log(Level.SEVERE, "IOException from"
@@ -209,6 +228,27 @@ public class Player{
                         ex);
             }
             return btnNum;
+        }
+        
+        public boolean receiveOpponentReadiness(){
+            boolean isOpponentReady = false;
+            try {
+                isOpponentReady = this.dis.readBoolean();
+            } catch (IOException ex) {
+                Logger.getLogger(Player.class.getName()).log(Level.SEVERE, 
+                        null, ex);
+            }
+            return isOpponentReady;
+        }
+        
+        public void closeConnection(){
+            try {
+                socket.close();
+                System.out.println("Player #" + id + " closed connection.");
+            } catch (IOException ex) {
+                Logger.getLogger(Player.class.getName()).log(Level.SEVERE,
+                        null, ex);
+            }
         }
     }
     

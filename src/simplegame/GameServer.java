@@ -24,7 +24,7 @@ public class GameServer {
     private Random random = new Random();
     private int maxTurns;
     private int turnsMade;
-    private int[] values = new int[NUM_OF_VALUES];
+    private int[] buttonValues = new int[NUM_OF_VALUES];
     private int player1ClickedButtonNumber;
     private int player2ClickedButtonNumber;
     
@@ -46,9 +46,10 @@ public class GameServer {
     
     private void generateRandomValues(){
         System.out.println("----Generating random values----");
-        for(int i = 0; i < this.values.length; ++i){
-            this.values[i] = random.nextInt(MAX_VALUE);
-            System.out.println("Value #" + (i + 1) + " is " + this.values[i]);
+        for(int i = 0; i < this.buttonValues.length; ++i){
+            this.buttonValues[i] = random.nextInt(MAX_VALUE);
+            System.out.println("Value #" + (i + 1) + " is "
+                    + this.buttonValues[i]);
         }
     }
     
@@ -70,6 +71,8 @@ public class GameServer {
                     this.player1 = ssc;
                 } else {
                     this.player2 = ssc;
+                    this.player1.sendSecondPlayerReadiness(); 
+                    System.out.println("Opponent connected...");
                 }
                 Thread thread = new Thread(ssc);
                 thread.start();
@@ -110,7 +113,7 @@ public class GameServer {
                 this.dos.writeInt(this.playerID);
                 this.dos.writeInt(maxTurns);
                 this.dos.writeInt(turnsMade);
-                for(int val: values){
+                for(int val: buttonValues){
                     this.dos.writeInt(val);
                 }
                 this.dos.flush();
@@ -121,11 +124,15 @@ public class GameServer {
             }
             
             while(true){
+                if(turnsMade >= maxTurns){
+                    System.out.println("---GAME OVER---");
+                    break;
+                }
                 try{
                     if(playerID == 1){
                         player1ClickedButtonNumber = this.dis.readInt();
-                        System.out.println("Player #1 clicked button #"
-                            + player1ClickedButtonNumber);
+                                System.out.println("Player #1 clicked button #"
+                                    + player1ClickedButtonNumber);
                         player2.sendButtonNumber(player1ClickedButtonNumber);
                     } else {
                         player2ClickedButtonNumber = this.dis.readInt();
@@ -133,27 +140,30 @@ public class GameServer {
                             + player2ClickedButtonNumber);
                         player1.sendButtonNumber(player2ClickedButtonNumber);
                     }
-                    ++turnsMade;
-                    if(turnsMade == maxTurns){
-                        System.out.println("---GAME OVER---");
-                        break;
-                    }
+                    ++turnsMade;                    
                 } catch(IOException ex){
                     Logger.getLogger(GameServer.class.getName())
-                        .log(Level.SEVERE, "IOEsception from run() in"
-                                + " ServerSideConnection", ex);
+                        .log(Level.SEVERE, ex.getMessage(), ex);
+                    System.out.println("turnsMade = " + turnsMade);
+                    System.out.println("maxTurns = " + maxTurns);
                 }
             }
-            
+            closeConnection();
+            //player1.closeConnection();
+            //player2.closeConnection();
+        }
+        
+        private void sendSecondPlayerReadiness(){
             try {
-                serverSocket.close();
+                this.dos.writeBoolean(true);
+                this.dos.flush();
             } catch (IOException ex) {
                 Logger.getLogger(GameServer.class.getName()).log(Level.SEVERE,
                         null, ex);
             }
         }
         
-        public void sendButtonNumber(int buttonNumber){
+        private void sendButtonNumber(int buttonNumber){
             try {
                 this.dos.writeInt(buttonNumber);
                 this.dos.flush();
@@ -163,6 +173,16 @@ public class GameServer {
             }
         }
         
+        private void closeConnection(){
+            try {
+                socket.close();
+                System.out.println("Closing server side connection for player #"
+                        + playerID);
+            } catch (IOException ex) {
+                Logger.getLogger(GameServer.class.getName()).log(Level.SEVERE,
+                        null, ex);
+            }
+        }
     }
     
     public static void main(String[] args) {
